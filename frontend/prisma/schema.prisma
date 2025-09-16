@@ -1,0 +1,32 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id       String    @id @default(cuid())
+  email    String    @unique
+  password String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // связь с проектами
+  projects Project[]
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  svg       String?      // сетка в JSON-строке
+  params    Json?        // <-- новые параметры проекта (tile_w, tile_h, seam и т.д.)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Project" ADD COLUMN "angle" REAL;
+ALTER TABLE "Project" ADD COLUMN "seam" REAL;
+ALTER TABLE "Project" ADD COLUMN "startX" REAL;
+ALTER TABLE "Project" ADD COLUMN "startY" REAL;
+ALTER TABLE "Project" ADD COLUMN "tileH" REAL;
+ALTER TABLE "Project" ADD COLUMN "tileW" REAL;

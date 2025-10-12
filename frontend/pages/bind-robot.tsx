@@ -11,6 +11,9 @@ const CHUNK_HEADER_BYTES = 1;
 const MAX_CHUNK_PAYLOAD = MAX_WRITE_BYTES - CHUNK_HEADER_BYTES;
 const CHUNK_DELAY_MS = 30;
 const DEVICE_NAME_PREFIX = 'TMbot';
+const TRANSFER_RATE_BPS = 180;
+const TRANSFER_BYTES = 123;
+const TRANSFER_DURATION_MS = 1000;
 
 const UPLOAD_OPCODES = {
   START: 0x01,
@@ -103,6 +106,36 @@ function appendUint8Arrays(a: Uint8Array, b: Uint8Array) {
   return out;
 }
 
+type DecodedStatus = {
+  payload: unknown | null;
+  text: string;
+  error: string | null;
+};
+
+function decodeStatusBuffer(buffer: Uint8Array): DecodedStatus {
+  if (!buffer.length) {
+    return { payload: null, text: '', error: 'Status payload is empty.' };
+  }
+  const text = textDecoder.decode(buffer);
+  try {
+    const payload = JSON.parse(text);
+    return { payload, text, error: null };
+  } catch (error) {
+    return { payload: null, text, error: getErrorMessage(error, 'Invalid status payload.') };
+  }
+}
+
+function finalizeStatusAssembler(assembler: StatusAssembler) {
+  const result = decodeStatusBuffer(assembler.buffer);
+  resetStatusAssembler(assembler);
+  if (result.error) {
+    const statusError = new Error(result.error);
+    (statusError as { rawStatus?: string }).rawStatus = result.text;
+    throw statusError;
+  }
+  return result.payload;
+}
+
 function createStartFrame(totalLength: number) {
   const frame = new Uint8Array(5);
   const view = new DataView(frame.buffer);
@@ -148,21 +181,29 @@ async function writeFrame(characteristic: WritableCharacteristic, frame: Uint8Ar
   throw new Error('Characteristic does not support write operations');
 }
 
-async function sendChunkedPayload(characteristic: WritableCharacteristic, payload: Uint8Array) {
+async function sendChunkedPayload(
+  characteristic: WritableCharacteristic,
+  payload: Uint8Array,
+  onProgress?: (bytesSent: number) => void,
+) {
   await writeFrame(characteristic, createStartFrame(payload.length));
   await delay(CHUNK_DELAY_MS);
+  if (onProgress) {
+    onProgress(0);
+  }
   for (let offset = 0; offset < payload.length; offset += MAX_CHUNK_PAYLOAD) {
     const length = Math.min(MAX_CHUNK_PAYLOAD, payload.length - offset);
     const frame = createChunkFrame(payload, offset, length);
     await writeFrame(characteristic, frame);
     await delay(CHUNK_DELAY_MS);
+    if (onProgress) {
+      onProgress(Math.min(payload.length, offset + length));
+    }
   }
   await writeFrame(characteristic, new Uint8Array([UPLOAD_OPCODES.END]));
-}
-
-function tryDecodeStatusPayload(buffer: Uint8Array) {
-  const text = textDecoder.decode(buffer);
-  return JSON.parse(text);
+  if (onProgress) {
+    onProgress(payload.length);
+  }
 }
 
 function processStatusFrame(frame: Uint8Array, assembler: StatusAssembler) {
@@ -171,22 +212,46 @@ function processStatusFrame(frame: Uint8Array, assembler: StatusAssembler) {
   }
   const opcode = frame[0];
 
+  if (
+    opcode !== STATUS_OPCODES.START &&
+    opcode !== STATUS_OPCODES.CONT &&
+    opcode !== STATUS_OPCODES.END
+  ) {
+    const result = decodeStatusBuffer(frame);
+    resetStatusAssembler(assembler);
+    if (result.error) {
+      const statusError = new Error(result.error);
+      (statusError as { rawStatus?: string }).rawStatus = result.text;
+      throw statusError;
+    }
+    return result.payload;
+  }
+
   if (opcode === STATUS_OPCODES.START) {
     if (frame.length < 5) {
       throw new Error('START frame too short');
     }
     const expected = new DataView(frame.buffer, frame.byteOffset + 1, 4).getUint32(0, true);
     const chunk = frame.slice(5);
-    if (chunk.length > expected) {
-      throw new Error('START chunk longer than expected');
+    if (expected === 0 && chunk.length > 0) {
+      assembler.expected = chunk.length;
+      assembler.buffer = chunk;
+      assembler.complete = true;
+      return finalizeStatusAssembler(assembler);
     }
     assembler.expected = expected;
     assembler.buffer = chunk;
+    if (chunk.length > expected) {
+      console.warn(
+        `STATUS warning: START chunk (${chunk.length}B) longer than advertised length (${expected}B). Using actual chunk length.`,
+      );
+      assembler.expected = chunk.length;
+      assembler.complete = true;
+      return finalizeStatusAssembler(assembler);
+    }
     assembler.complete = chunk.length === expected;
     if (assembler.complete) {
-      const payload = tryDecodeStatusPayload(assembler.buffer);
-      resetStatusAssembler(assembler);
-      return payload;
+      return finalizeStatusAssembler(assembler);
     }
     return null;
   }
@@ -196,12 +261,21 @@ function processStatusFrame(frame: Uint8Array, assembler: StatusAssembler) {
       throw new Error('CONT frame received before START');
     }
     const chunk = frame.slice(1);
-    const combined = appendUint8Arrays(assembler.buffer, chunk);
-    if (combined.length > assembler.expected) {
-      throw new Error('Status payload exceeds expected length');
+    let combined = appendUint8Arrays(assembler.buffer, chunk);
+    if (combined.length > (assembler.expected ?? combined.length)) {
+      console.warn(
+        `STATUS warning: payload longer than expected (${combined.length}/${assembler.expected}); adjusting to combined length.`,
+      );
+      assembler.expected = combined.length;
+    }
+    if (assembler.expected != null && combined.length > assembler.expected) {
+      combined = combined.slice(0, assembler.expected);
     }
     assembler.buffer = combined;
-    assembler.complete = combined.length === assembler.expected;
+    assembler.complete = assembler.expected != null && combined.length >= assembler.expected;
+    if (assembler.complete) {
+      return finalizeStatusAssembler(assembler);
+    }
     return null;
   }
 
@@ -211,18 +285,12 @@ function processStatusFrame(frame: Uint8Array, assembler: StatusAssembler) {
       resetStatusAssembler(assembler);
       return null;
     }
-    if (!assembler.complete) {
+    if (!assembler.complete && assembler.expected != null) {
       console.warn(
-        `STATUS END received before payload complete (${assembler.buffer.length}/${assembler.expected})`,
+        `STATUS END received before payload complete (${assembler.buffer.length}/${assembler.expected}). Attempting to decode partial payload.`,
       );
-      resetStatusAssembler(assembler);
-      return null;
     }
-    try {
-      return tryDecodeStatusPayload(assembler.buffer);
-    } finally {
-      resetStatusAssembler(assembler);
-    }
+    return finalizeStatusAssembler(assembler);
   }
 
   throw new Error(`Unknown status opcode ${opcode}`);
@@ -243,12 +311,40 @@ export default function BindRobotPage() {
   const [layoutLoading, setLayoutLoading] = useState<boolean>(false);
   const [layoutError, setLayoutError] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
+  const [connectProgress, setConnectProgress] = useState<number>(0);
+  const [sendProgressTotal, setSendProgressTotal] = useState<number>(0);
+  const [sendProgressBytes, setSendProgressBytes] = useState<number>(0);
+  const [sendProgressVisual, setSendProgressVisual] = useState<number>(0);
 
   const serverRef = useRef<BluetoothRemoteGATTServer | null>(null);
   const txCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const rxCharRef = useRef<WritableCharacteristic | null>(null);
   const profileRef = useRef<ServiceProfile | null>(null);
   const statusAssemblerRef = useRef<StatusAssembler>(createStatusAssembler());
+  const progressAnimationRef = useRef<number | null>(null);
+  const progressStartRef = useRef<number | null>(null);
+  const sendProgressAnimationRef = useRef<number | null>(null);
+  const sendProgressStartRef = useRef<number | null>(null);
+  const sendProgressBytesRef = useRef<number>(0);
+
+  const updateSendProgressBytes = (value: number) => {
+    const clamped = Math.max(0, value);
+    sendProgressBytesRef.current = clamped;
+    setSendProgressBytes(clamped);
+    setSendProgressVisual((prev) => (clamped > prev ? clamped : prev));
+  };
+
+  const resetSendProgress = () => {
+    if (sendProgressAnimationRef.current != null) {
+      cancelAnimationFrame(sendProgressAnimationRef.current);
+      sendProgressAnimationRef.current = null;
+    }
+    sendProgressStartRef.current = null;
+    sendProgressBytesRef.current = 0;
+    setSendProgressTotal(0);
+    setSendProgressBytes(0);
+    setSendProgressVisual(0);
+  };
 
   const selectedDevice = useMemo(
     () => devices.find((d) => d.id === selectedId) ?? null,
@@ -297,6 +393,94 @@ export default function BindRobotPage() {
 
     restoreDevices();
   }, []);
+
+  useEffect(() => {
+    if (status === 'connecting') {
+      setConnectProgress(0);
+      progressStartRef.current = null;
+
+      const animate = (timestamp: number) => {
+        if (progressStartRef.current == null) {
+          progressStartRef.current = timestamp;
+        }
+        const elapsed = timestamp - progressStartRef.current;
+        const progress = Math.min(
+          TRANSFER_BYTES,
+          (elapsed / TRANSFER_DURATION_MS) * TRANSFER_BYTES,
+        );
+        setConnectProgress(progress);
+        if (elapsed < TRANSFER_DURATION_MS) {
+          progressAnimationRef.current = requestAnimationFrame(animate);
+        } else {
+          progressAnimationRef.current = null;
+        }
+      };
+
+      progressAnimationRef.current = requestAnimationFrame(animate);
+
+      return () => {
+        if (progressAnimationRef.current != null) {
+          cancelAnimationFrame(progressAnimationRef.current);
+          progressAnimationRef.current = null;
+        }
+      };
+    }
+
+    if (progressAnimationRef.current != null) {
+      cancelAnimationFrame(progressAnimationRef.current);
+      progressAnimationRef.current = null;
+    }
+
+    setConnectProgress(status === 'connected' ? TRANSFER_BYTES : 0);
+
+    return undefined;
+  }, [status]);
+
+  useEffect(() => {
+    if (!isSending || sendProgressTotal <= 0) {
+      if (sendProgressAnimationRef.current != null) {
+        cancelAnimationFrame(sendProgressAnimationRef.current);
+        sendProgressAnimationRef.current = null;
+      }
+      sendProgressStartRef.current = null;
+      if (!isSending) {
+        setSendProgressVisual(0);
+      }
+      return undefined;
+    }
+
+    const durationMs = Math.max(1, (sendProgressTotal / TRANSFER_RATE_BPS) * 1000);
+
+    const animate = (timestamp: number) => {
+      if (!isSending) {
+        sendProgressAnimationRef.current = null;
+        return;
+      }
+      if (sendProgressStartRef.current == null) {
+        sendProgressStartRef.current = timestamp;
+      }
+      const elapsed = timestamp - sendProgressStartRef.current;
+      const estimated = Math.min(sendProgressTotal, (elapsed / durationMs) * sendProgressTotal);
+      const target = Math.max(sendProgressBytesRef.current, estimated);
+      setSendProgressVisual(target);
+
+      if (sendProgressBytesRef.current >= sendProgressTotal && target >= sendProgressTotal) {
+        sendProgressAnimationRef.current = null;
+        return;
+      }
+
+      sendProgressAnimationRef.current = requestAnimationFrame(animate);
+    };
+
+    sendProgressAnimationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (sendProgressAnimationRef.current != null) {
+        cancelAnimationFrame(sendProgressAnimationRef.current);
+        sendProgressAnimationRef.current = null;
+      }
+    };
+  }, [isSending, sendProgressTotal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -501,6 +685,11 @@ export default function BindRobotPage() {
               }
             } catch (notificationError) {
               console.error('Failed to decode status frame', notificationError);
+              const errorMessage = getErrorMessage(notificationError, 'Failed to decode status frame.');
+              const rawStatus = (notificationError as { rawStatus?: string }).rawStatus;
+              const details = rawStatus ? `${errorMessage} Raw: ${rawStatus}` : errorMessage;
+              setMessage(details);
+              resetStatusAssembler(statusAssemblerRef.current);
             }
           });
 
@@ -512,11 +701,12 @@ export default function BindRobotPage() {
               snapshot.byteLength,
             );
             if (snapshotView.length) {
-              try {
-                const payload = JSON.parse(textDecoder.decode(snapshotView));
-                setMessage(`Robot status: ${JSON.stringify(payload)}`);
-              } catch (snapshotError) {
-                console.warn('Failed to parse status snapshot', snapshotError);
+              const decoded = decodeStatusBuffer(snapshotView);
+              if (decoded.error) {
+                console.warn('Failed to parse status snapshot', decoded.error, decoded.text);
+                setMessage(`${decoded.error}${decoded.text ? ` Raw: ${decoded.text}` : ''}`);
+              } else if (decoded.payload != null) {
+                setMessage(`Robot status: ${JSON.stringify(decoded.payload)}`);
               }
             }
           } catch (snapshotReadError) {
@@ -578,12 +768,18 @@ export default function BindRobotPage() {
         return;
       }
 
+      setSendProgressTotal(payload.length);
+      updateSendProgressBytes(0);
+      setSendProgressVisual(0);
+      sendProgressStartRef.current = null;
+
       setMessage(`Transferring layout to the robot (${payload.length} bytes)...`);
 
       if (payload.length <= MAX_WRITE_BYTES) {
         await writeFrame(uploadCharacteristic, payload);
+        updateSendProgressBytes(payload.length);
       } else {
-        await sendChunkedPayload(uploadCharacteristic, payload);
+        await sendChunkedPayload(uploadCharacteristic, payload, updateSendProgressBytes);
       }
 
       setMessage(`Layout sent successfully (${payload.length} bytes).`);
@@ -598,11 +794,17 @@ export default function BindRobotPage() {
       setMessage(getErrorMessage(error, 'Failed to send layout.'));
     } finally {
       setIsSending(false);
+      resetSendProgress();
     }
   };
 
   const tilesCount = layout.length;
   const firstTilePoints = layout[0]?.length ?? 0;
+  const connectProgressPercent =
+    TRANSFER_BYTES > 0 ? Math.min(100, (connectProgress / TRANSFER_BYTES) * 100) : 0;
+  const sendProgressPercent =
+    sendProgressTotal > 0 ? Math.min(100, (sendProgressVisual / sendProgressTotal) * 100) : 0;
+  const displayedSendBytes = Math.min(sendProgressTotal, Math.round(sendProgressBytes));
 
   return (
     <>
@@ -664,6 +866,23 @@ export default function BindRobotPage() {
             >
               {isSending ? 'Sending layout...' : 'Send layout to robot'}
             </motion.button>
+
+            {isSending && sendProgressTotal > 0 && (
+              <div className="mt-2 space-y-2 text-xs text-[#A8FF60]/80">
+                <div className="flex items-center justify-between">
+                  <span>Sending layout...</span>
+                  <span>
+                    {displayedSendBytes}/{sendProgressTotal} bytes
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-[#252b63] overflow-hidden">
+                  <div
+                    className="h-full bg-[#D5EA44] transition-[width] duration-75 ease-linear"
+                    style={{ width: `${sendProgressPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto rounded-[28px] bg-[#1b2060]/80 p-4">
@@ -702,6 +921,23 @@ export default function BindRobotPage() {
             )}
           </div>
 
+          {status === 'connecting' && (
+            <div className="w-full space-y-2 text-left">
+              <div className="flex items-center justify-between text-xs text-[#A8FF60]/80">
+                <span>Establishing BLE link…</span>
+                <span>
+                  {Math.round(connectProgress)}/{TRANSFER_BYTES} bytes
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-[#252b63] overflow-hidden">
+                <div
+                  className="h-full bg-[#D5EA44] transition-[width] duration-75 ease-linear"
+                  style={{ width: `${connectProgressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {!!message && (
             <div
               className={`text-sm rounded-[16px] px-4 py-3 ${
@@ -738,3 +974,4 @@ export default function BindRobotPage() {
     </>
   );
 }
+

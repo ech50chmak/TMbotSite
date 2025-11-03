@@ -1,11 +1,10 @@
 // components/SvgPreviewDesktop.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import { processDxfOnClient, CuttingParams } from "@/lib/dxf-processing";
 
 type Point = [number, number];
 type Polygon = Point[];
-
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export default function SvgPreviewDesktop() {
   const router = useRouter();
@@ -96,30 +95,25 @@ export default function SvgPreviewDesktop() {
       setLoading(true);
       setMessage("Создание сетки...");
 
-      const formData = new FormData();
-      formData.append("file", dxfFile);
-      formData.append("tile_w", String(tileW));
-      formData.append("tile_h", String(tileH));
-      formData.append("seam", String(seam));
-      formData.append("start_x", String(startX));
-      formData.append("start_y", String(startY));
-      formData.append("angle_deg", String(angle));
+      const params: CuttingParams = {
+        tile_w: tileW,
+        tile_h: tileH,
+        seam,
+        start_x: startX,
+        start_y: startY,
+        angle_deg: angle,
+      };
 
-      const res = await fetch(`${API_URL}/process-dxf/`, {
-        method: "POST",
-        body: formData,
-      });
-      const json = await res.json();
-      if (json.status !== "ok") throw new Error(json.message || "Ошибка генерации");
+      const layout = await processDxfOnClient(dxfFile, params);
 
-      setPolygons(json.data);
+      setPolygons(layout);
 
       // Автосохранение в БД
       const saveRes = await fetch(`/api/projects/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          svg: JSON.stringify(json.data),
+          svg: JSON.stringify(layout),
           params: {
             tile_w: tileW,
             tile_h: tileH,
@@ -135,9 +129,10 @@ export default function SvgPreviewDesktop() {
       if (!saveRes.ok) throw new Error("Не удалось сохранить сетку");
 
       setMessage("Сетка сохранена");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Ошибка генерации:", err);
-      setMessage("Ошибка генерации: " + err.message);
+      const message = err instanceof Error ? err.message : "Неизвестная ошибка";
+      setMessage("Ошибка генерации: " + message);
     } finally {
       setLoading(false);
     }

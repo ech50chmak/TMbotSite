@@ -1,7 +1,7 @@
 // lib/session.ts
-import type { SessionOptions } from "iron-session";
+import type { IronSessionOptions } from "iron-session";
 
-export const sessionOptions: SessionOptions = {
+export const sessionOptions: IronSessionOptions = {
   cookieName: "tmbot_session",
   password: process.env.IRON_SESSION_PASSWORD as string,
   cookieOptions: {
@@ -9,4 +9,8 @@ export const sessionOptions: SessionOptions = {
   },
 };
 
-export type SessionData = { user?: { id: string; email: string } };
+declare module "iron-session" {
+  interface IronSessionData {
+    user?: { id: string; email: string };
+  }
+}

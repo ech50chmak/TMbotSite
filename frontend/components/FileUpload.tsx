@@ -2,11 +2,10 @@
 import React, { useState } from "react";
 import { sendDxfAndParams } from "../lib/api";
 import SvgPreview from "./SvgPreview";
-import { CuttingParams } from "@/lib/dxf-processing";
 
 const FileUpload: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [params, setParams] = useState<CuttingParams>({
+  const [params, setParams] = useState({
     tile_w: 135,
     tile_h: 135,
     seam: 10,
@@ -14,7 +13,7 @@ const FileUpload: React.FC = () => {
     start_y: 275,
     angle_deg: 30,
   });
-  const [cutData, setCutData] = useState<number[][][]>([]);
+  const [cutData, setCutData] = useState<any[][]>([]);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -23,8 +22,7 @@ const FileUpload: React.FC = () => {
       setLoading(true);
       const res = await sendDxfAndParams(file, params);
       setCutData(res.data);
-    } catch (error) {
-      console.error("Ошибка обработки DXF:", error);
+    } catch (err) {
       alert("Ошибка при отправке запроса");
     } finally {
       setLoading(false);
@@ -43,17 +41,14 @@ const FileUpload: React.FC = () => {
       />
 
       <div className="grid grid-cols-2 gap-2 mb-4">
-        {(Object.entries(params) as Array<[keyof CuttingParams, number]>).map(([key, value]) => (
+        {Object.entries(params).map(([key, value]) => (
           <label key={key} className="flex flex-col text-sm">
             {key}
             <input
               type="number"
               value={value}
               onChange={(e) =>
-                setParams((prev) => ({
-                  ...prev,
-                  [key]: parseFloat(e.target.value),
-                }))
+                setParams({ ...params, [key]: parseFloat(e.target.value) })
               }
               className="border px-2 py-1 rounded"
             />
@@ -69,9 +64,7 @@ const FileUpload: React.FC = () => {
         {loading ? "Обработка..." : "Построить сетку"}
       </button>
 
-      {cutData.length > 0 && (
-        <SvgPreview data={cutData} projectName="Предпросмотр раскладки" />
-      )}
+      {cutData.length > 0 && <SvgPreview data={cutData} />}
     </div>
   );
 };

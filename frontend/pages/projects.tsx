@@ -12,20 +12,6 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState("");
 
-
-
-  const getErrorMessage = (caught: unknown, fallback: string) => {
-
-    if (caught instanceof Error && caught.message) return caught.message;
-
-    if (typeof caught === "string" && caught) return caught;
-
-    return fallback;
-
-  };
-
-
-
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -43,16 +29,8 @@ export default function ProjectsPage() {
         }
         const data = await res.json();
         if (mounted) setProjects(data.projects ?? []);
-      } catch (error) {
-
-        if (mounted) {
-
-          const message = getErrorMessage(error, "Ошибка загрузки");
-
-          setError(message);
-
-        }
-
+      } catch (e: any) {
+        if (mounted) setError(e.message || "Ошибка загрузки");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -79,10 +57,8 @@ export default function ProjectsPage() {
       }
       const { project } = await res.json();
       setProjects((prev) => [project, ...prev]);
-    } catch (error) {
-
-      alert(getErrorMessage(error, "Ошибка создания проекта"));
-
+    } catch (e: any) {
+      alert(e.message || "Ошибка создания проекта");
     }
   };
 
@@ -94,10 +70,8 @@ export default function ProjectsPage() {
       });
       if (!res.ok) throw new Error("Ошибка удаления");
       setProjects((prev) => prev.filter((p) => p.id !== id));
-    } catch (error) {
-
-      alert(getErrorMessage(error, "Ошибка удаления"));
-
+    } catch (e: any) {
+      alert(e.message || "Ошибка удаления");
     }
   };
 
@@ -129,10 +103,7 @@ export default function ProjectsPage() {
           </div>
           <div className="h-[15]"></div>
           {/* Список проектов */}
-          <div className="flex-1 overflow-y-auto rounded-[28px] bg-[#1b2060]/60 p-4 h-max-[600px]">
-            {error && (
-              <p className="text-red-400 pb-3">{error}</p>
-            )}
+          <div className="flex-1 overflow-y-auto rounded-[28px] bg-[#1b2060]/60 p-4 h-max-[600px]">
             {!hasProjects ? (
               <p className="text-[#A8FF60] py-[12]">
                 Пока нет проектов — создайте первый.

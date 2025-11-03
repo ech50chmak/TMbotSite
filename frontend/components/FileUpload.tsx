@@ -69,7 +69,9 @@ const FileUpload: React.FC = () => {
         {loading ? "Обработка..." : "Построить сетку"}
       </button>
 
-      {cutData.length > 0 && <SvgPreview data={cutData} />}
+      {cutData.length > 0 && (
+        <SvgPreview data={cutData} projectName="Предпросмотр раскладки" />
+      )}
     </div>
   );
 };

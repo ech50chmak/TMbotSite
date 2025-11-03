@@ -161,10 +161,14 @@ export default function SvgPreviewMobile() {
       setTimeout(() => {
         previewTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
-    } catch (error) {
-      console.error("Ошибка генерации:", error);
-      const message = error instanceof Error ? error.message : "Неизвестная ошибка";
-      setMessage("Ошибка генерации: " + message);
+    } catch (error) {
+
+      console.error("Ошибка генерации:", error);
+
+      const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+
+      setMessage("Ошибка генерации: " + message);
+
     } finally {
       setLoading(false);
     }
@@ -234,12 +238,14 @@ export default function SvgPreviewMobile() {
     setVB(nx, ny, nw, nh);
   };
   // touch
-  function distance(t1: Touch, t2: Touch) {
+    type TouchPoint = { clientX: number; clientY: number };
+
+  function distance(t1: TouchPoint, t2: TouchPoint) {
     const dx = t1.clientX - t2.clientX;
     const dy = t1.clientY - t2.clientY;
     return Math.hypot(dx, dy);
   }
-  function midpoint(t1: Touch, t2: Touch) {
+  function midpoint(t1: TouchPoint, t2: TouchPoint) {
     return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
   }
   const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {

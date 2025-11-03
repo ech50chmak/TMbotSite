@@ -1,11 +1,11 @@
 // pages/api/projects/index.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getIronSession } from "iron-session";
-import { sessionOptions, type SessionData } from "@/lib/session";
+import { sessionOptions } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getIronSession<SessionData>(req, res, sessionOptions);
+  const session = await getIronSession(req, res, sessionOptions);
   const user = session.user;
 
   if (!user) {

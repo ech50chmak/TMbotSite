@@ -6,7 +6,6 @@ import SvgPreviewMobile from "./SvgPreviewMobile";
 type SvgPreviewProps = {
   data?: number[][][];
   projectName?: string;
-  initialParams?: unknown;
 };
 
 type InlineSvgPreviewProps = {

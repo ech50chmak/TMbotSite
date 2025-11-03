@@ -1,7 +1,7 @@
 // pages/api/register.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getIronSession } from "iron-session";
-import { sessionOptions, type SessionData } from "@/lib/session";
+import { sessionOptions } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -20,7 +20,7 @@ export default async function register(req: NextApiRequest, res: NextApiResponse
     });
 
     // сразу логиним
-    const session = await getIronSession<SessionData>(req, res, sessionOptions);
+    const session = await getIronSession(req, res, sessionOptions);
     session.user = { id: user.id, email: user.email };
     await session.save();
 

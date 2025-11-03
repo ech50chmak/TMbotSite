@@ -405,11 +405,9 @@ export async function parseDxfContent(content: string): Promise<Ring[]> {
   arcs.forEach((arc) => {
     const radius = arc.radius ?? 0;
     if (!radius) return;
-    const centerX = 'centerX' in arc ? arc.centerX ?? 0 : (arc as { center?: { x?: number } })?.center?.x ?? 0;
-    const centerY = 'centerY' in arc ? arc.centerY ?? 0 : (arc as { center?: { y?: number } })?.center?.y ?? 0;
     const points = approximateArc(
-      centerX,
-      centerY,
+      arc.center?.x ?? 0,
+      arc.center?.y ?? 0,
       radius,
       arc.startAngle ?? 0,
       arc.endAngle ?? 0,
@@ -424,11 +422,9 @@ export async function parseDxfContent(content: string): Promise<Ring[]> {
   circles.forEach((circle) => {
     const radius = circle.radius ?? 0;
     if (!radius) return;
-    const centerX = 'centerX' in circle ? circle.centerX ?? 0 : (circle as { center?: { x?: number } })?.center?.x ?? 0;
-    const centerY = 'centerY' in circle ? circle.centerY ?? 0 : (circle as { center?: { y?: number } })?.center?.y ?? 0;
     const points = approximateArc(
-      centerX,
-      centerY,
+      circle.center?.x ?? 0,
+      circle.center?.y ?? 0,
       radius,
       0,
       360,

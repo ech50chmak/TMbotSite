@@ -1,7 +1,7 @@
 // pages/api/register.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getIronSession } from "iron-session";
-import { sessionOptions } from "@/lib/session";
+import { sessionOptions, type SessionData } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -20,16 +20,22 @@ export default async function register(req: NextApiRequest, res: NextApiResponse
     });
 
     // сразу логиним
-    const session = await getIronSession(req, res, sessionOptions);
+    const session = await getIronSession<SessionData>(req, res, sessionOptions);
     session.user = { id: user.id, email: user.email };
     await session.save();
 
     return res.status(200).json({ message: "ok" });
-  } catch (e: any) {
-    if (e?.code === "P2002") {
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002"
+    ) {
       return res.status(409).json({ message: "Такой email уже зарегистрирован" });
     }
-    console.error("Register error:", e);
+    console.error("Register error:", error);
     return res.status(500).json({ message: "Внутренняя ошибка" });
   }
 }
+

@@ -49,9 +49,10 @@ export default function Register() {
 
       setSuccess("Регистрация успешна! Открываю профиль…");
       setTimeout(() => router.push("/profile"), 600);
-    } catch (err) {
-      setError("Произошла ошибка сервера. Попробуйте позже.");
-      setLoading(false);
+    } catch (error) {
+      console.error("Register error:", error);
+      setError("Произошла ошибка сервера. Попробуйте позже.");
+      setLoading(false);
     }
   };
 
@@ -141,3 +142,4 @@ export default function Register() {
     </>
   );
 }
+

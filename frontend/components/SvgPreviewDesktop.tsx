@@ -1,11 +1,26 @@
 // components/SvgPreviewDesktop.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import { processDxfOnClient, CuttingParams } from "@/lib/dxf-processing";
 
 type Point = [number, number];
 type Polygon = Point[];
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+
+type ProjectParams = CuttingParams & { dxfName?: string };
+
+type ProjectPayload = {
+
+  name?: string;
+
+  svg?: string | null;
+
+  params?: ProjectParams | null;
+
+};
+
+
 
 export default function SvgPreviewDesktop() {
   const router = useRouter();
@@ -40,31 +55,47 @@ export default function SvgPreviewDesktop() {
       try {
         const res = await fetch(`/api/projects/${id}`);
         if (!res.ok) return;
-        const { project } = await res.json();
+        const { project } = (await res.json()) as { project: ProjectPayload };
 
         setProjectName(project.name ?? "Черновик");
 
         if (project.svg) {
           try {
-            const parsed = JSON.parse(project.svg);
-            setPolygons(parsed);
-          } catch (e) {
-            console.warn("Ошибка парсинга svg:", e);
+            const parsed = JSON.parse(project.svg) as Polygon[];
+
+            if (Array.isArray(parsed)) {
+
+              setPolygons(parsed);
+
+            }
+
+          } catch (error) {
+
+            console.warn("Ошибка парсинга svg:", error);
           }
         }
 
         if (project.params) {
-          const p = project.params as any;
+
+          const p: Partial<ProjectParams> = project.params;
+
           setTileW(p.tile_w ?? 100);
+
           setTileH(p.tile_h ?? 100);
+
           setSeam(p.seam ?? 2);
+
           setStartX(p.start_x ?? 0);
+
           setStartY(p.start_y ?? 0);
+
           setAngle(p.angle_deg ?? 0);
+
           setDxfName(p.dxfName ?? "");
+
         }
-      } catch (err) {
-        console.error("Ошибка загрузки проекта:", err);
+      } catch (error) {
+        console.error("Ошибка загрузки проекта:", error);
       }
     })();
   }, [id]);
@@ -96,30 +127,25 @@ export default function SvgPreviewDesktop() {
       setLoading(true);
       setMessage("Создание сетки...");
 
-      const formData = new FormData();
-      formData.append("file", dxfFile);
-      formData.append("tile_w", String(tileW));
-      formData.append("tile_h", String(tileH));
-      formData.append("seam", String(seam));
-      formData.append("start_x", String(startX));
-      formData.append("start_y", String(startY));
-      formData.append("angle_deg", String(angle));
+      const params: CuttingParams = {
+        tile_w: tileW,
+        tile_h: tileH,
+        seam,
+        start_x: startX,
+        start_y: startY,
+        angle_deg: angle,
+      };
 
-      const res = await fetch(`${API_URL}/process-dxf/`, {
-        method: "POST",
-        body: formData,
-      });
-      const json = await res.json();
-      if (json.status !== "ok") throw new Error(json.message || "Ошибка генерации");
+      const layout = await processDxfOnClient(dxfFile, params);
 
-      setPolygons(json.data);
+      setPolygons(layout);
 
       // Автосохранение в БД
       const saveRes = await fetch(`/api/projects/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          svg: JSON.stringify(json.data),
+          svg: JSON.stringify(layout),
           params: {
             tile_w: tileW,
             tile_h: tileH,
@@ -135,9 +161,14 @@ export default function SvgPreviewDesktop() {
       if (!saveRes.ok) throw new Error("Не удалось сохранить сетку");
 
       setMessage("Сетка сохранена");
-    } catch (err: any) {
-      console.error("Ошибка генерации:", err);
-      setMessage("Ошибка генерации: " + err.message);
+    } catch (error) {
+
+      console.error("Ошибка генерации:", error);
+
+      const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+
+      setMessage("Ошибка генерации: " + message);
+
     } finally {
       setLoading(false);
     }
@@ -232,12 +263,14 @@ export default function SvgPreviewDesktop() {
   const endPan = () => setIsPanning(false);
 
   // touch pinch + pan
-  function distance(t1: Touch, t2: Touch) {
+    type TouchPoint = { clientX: number; clientY: number };
+
+  function distance(t1: TouchPoint, t2: TouchPoint) {
     const dx = t1.clientX - t2.clientX;
     const dy = t1.clientY - t2.clientY;
     return Math.hypot(dx, dy);
   }
-  function midpoint(t1: Touch, t2: Touch) {
+  function midpoint(t1: TouchPoint, t2: TouchPoint) {
     return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
   }
   const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
@@ -439,3 +472,4 @@ export default function SvgPreviewDesktop() {
     </div>
   );
 }
+

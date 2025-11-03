@@ -650,7 +650,12 @@ export default function BindRobotPage() {
       device = ensuredDevice;
       setMessage(`Connecting to ${device.name || device.id || 'device'}...`);
 
-      let server = await device.gatt.connect();
+      const gatt = device.gatt;
+      if (!gatt) {
+        throw new Error('Selected device does not expose a GATT server.');
+      }
+
+      let server = await gatt.connect();
       serverRef.current = server;
 
       let attached = false;
@@ -659,7 +664,7 @@ export default function BindRobotPage() {
       for (const profile of SERVICE_PROFILES) {
         try {
           if (!server.connected) {
-            server = await device.gatt.connect();
+            server = await gatt.connect();
           }
           const service = await server.getPrimaryService(profile.service);
           const statusCharacteristic = await service.getCharacteristic(profile.statusCharacteristic);

@@ -2,10 +2,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "@/lib/prisma";
 import { getIronSession } from "iron-session";
-import { sessionOptions } from "@/lib/session";
+import { sessionOptions, type SessionData } from "@/lib/session";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getIronSession(req, res, sessionOptions);
+  const session = await getIronSession<SessionData>(req, res, sessionOptions);
   if (!session.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }

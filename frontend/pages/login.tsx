@@ -34,7 +34,8 @@ export default function Login() {
       } else {
         router.push("/profile");
       }
-    } catch (err) {
+    } catch (error) {
+      console.error("Login error:", error);
       setError("Произошла ошибка сервера. Попробуйте позже.");
     }
   };
@@ -114,3 +115,4 @@ export default function Login() {
     </>
   );
 }
+

@@ -3,7 +3,6 @@ import Head from "next/head";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
-import Image from "next/image";
 
 export default function Profile() {
   const router = useRouter();

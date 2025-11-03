@@ -203,7 +203,7 @@ function approximateBulge(
   const centerX = midx + nx * distanceToCenter * Math.sign(bulge);
   const centerY = midy + ny * distanceToCenter * Math.sign(bulge);
 
-  let startAngle = Math.atan2(y1 - centerY, x1 - centerX);
+  const startAngle = Math.atan2(y1 - centerY, x1 - centerX);
   let endAngle = Math.atan2(y2 - centerY, x2 - centerX);
 
   if (bulge > 0 && endAngle <= startAngle) {
@@ -280,7 +280,7 @@ function buildPolygonsFromSegments(segments: Segment[]): Ring[] {
   segments.forEach((segment, idx) => {
     if (used[idx]) return;
 
-    let currentSegment = segments[idx];
+    const currentSegment = segments[idx];
     used[idx] = true;
 
     const loop: Point[] = [currentSegment.start, currentSegment.end];

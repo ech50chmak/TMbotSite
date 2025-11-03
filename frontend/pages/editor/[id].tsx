@@ -40,8 +40,11 @@ export default function EditorPage() {
         }
         const data = await res.json();
         if (mounted) setProject(data.project);
-      } catch (e: any) {
-        if (mounted) setError(e.message || "Ошибка загрузки");
+      } catch (error) {
+        if (mounted) {
+          const message = error instanceof Error ? error.message : "Ошибка загрузки";
+          setError(message || "Ошибка загрузки");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -75,3 +78,4 @@ export default function EditorPage() {
     </>
   );
 }
+

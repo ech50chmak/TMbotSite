@@ -41,8 +41,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     return res.status(405).json({ message: "Метод не поддерживается" });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Ошибка в /api/projects:", error);
     return res.status(500).json({ message: "Ошибка сервера" });
   }
 }
+

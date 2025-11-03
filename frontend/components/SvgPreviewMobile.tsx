@@ -6,6 +6,22 @@ import { processDxfOnClient, CuttingParams } from "@/lib/dxf-processing";
 type Point = [number, number];
 type Polygon = Point[];
 
+
+
+type ProjectParams = CuttingParams & { dxfName?: string };
+
+type ProjectPayload = {
+
+  name?: string;
+
+  svg?: string | null;
+
+  params?: ProjectParams | null;
+
+};
+
+
+
 export default function SvgPreviewMobile() {
   const router = useRouter();
   const { id } = router.query;
@@ -40,28 +56,46 @@ export default function SvgPreviewMobile() {
       try {
         const res = await fetch(`/api/projects/${id}`);
         if (!res.ok) return;
-        const { project } = await res.json();
+        const { project } = (await res.json()) as { project: ProjectPayload };
 
         setProjectName(project.name ?? "Черновик");
         if (project.svg) {
           try {
-            setPolygons(JSON.parse(project.svg));
-          } catch (e) {
-            console.warn("Ошибка парсинга svg:", e);
+
+            const parsed = JSON.parse(project.svg) as Polygon[];
+
+            if (Array.isArray(parsed)) {
+
+              setPolygons(parsed);
+
+            }
+
+          } catch (error) {
+
+            console.warn("Ошибка парсинга svg:", error);
           }
         }
         if (project.params) {
-          const p = project.params as any;
+
+          const p: Partial<ProjectParams> = project.params;
+
           setTileW(p.tile_w ?? 100);
+
           setTileH(p.tile_h ?? 100);
+
           setSeam(p.seam ?? 2);
+
           setStartX(p.start_x ?? 0);
+
           setStartY(p.start_y ?? 0);
+
           setAngle(p.angle_deg ?? 0);
+
           setDxfName(p.dxfName ?? "");
+
         }
-      } catch (err) {
-        console.error("Ошибка загрузки проекта:", err);
+      } catch (error) {
+        console.error("Ошибка загрузки проекта:", error);
       }
     })();
   }, [id]);
@@ -127,10 +161,10 @@ export default function SvgPreviewMobile() {
       setTimeout(() => {
         previewTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
-    } catch (err) {
-      console.error("Ошибка генерации:", err);
-      const message = err instanceof Error ? err.message : "Неизвестная ошибка";
-      setMessage("Ошибка генерации: " + message);
+    } catch (error) {
+      console.error("Ошибка генерации:", error);
+      const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+      setMessage("Ошибка генерации: " + message);
     } finally {
       setLoading(false);
     }
@@ -439,3 +473,4 @@ export default function SvgPreviewMobile() {
     </div>
   );
 }
+

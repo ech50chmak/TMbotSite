@@ -25,11 +25,17 @@ export default async function register(req: NextApiRequest, res: NextApiResponse
     await session.save();
 
     return res.status(200).json({ message: "ok" });
-  } catch (e: any) {
-    if (e?.code === "P2002") {
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002"
+    ) {
       return res.status(409).json({ message: "Такой email уже зарегистрирован" });
     }
-    console.error("Register error:", e);
+    console.error("Register error:", error);
     return res.status(500).json({ message: "Внутренняя ошибка" });
   }
 }
+

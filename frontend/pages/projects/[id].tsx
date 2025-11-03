@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Head from "next/head";
 import SvgPreview from "@/components/SvgPreview";
 
+import { CuttingParams } from "@/lib/dxf-processing";
+
 type Point = [number, number];
 type Polygon = Point[];
 
@@ -12,7 +14,7 @@ type Project = {
   name: string;
   createdAt: string;
   svg?: string | null;
-  params?: any;
+  params?: CuttingParams | null;
 };
 
 export default function ProjectPage() {
@@ -36,8 +38,8 @@ export default function ProjectPage() {
         if (mounted) {
           setProject(data.project);
         }
-      } catch (err) {
-        console.error(err);
+      } catch (error) {
+        console.error("Failed to load project:", error);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -72,3 +74,4 @@ export default function ProjectPage() {
     </>
   );
 }
+
